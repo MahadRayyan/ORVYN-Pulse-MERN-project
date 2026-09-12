@@ -1,0 +1,7 @@
+import {randomBytes,scrypt as scryptCb,timingSafeEqual,createHash,createCipheriv,createDecipheriv} from 'node:crypto';import {promisify} from 'node:util';
+const scrypt=promisify(scryptCb);export const hash=v=>createHash('sha256').update(v).digest('hex');export const randomToken=()=>randomBytes(32).toString('hex');
+export async function passwordHash(password){const salt=randomBytes(16).toString('hex'),key=await scrypt(password,salt,64);return salt+':'+key.toString('hex');}
+export async function passwordMatches(password,stored){const [salt,hex]=stored.split(':'),key=await scrypt(password,salt,64),expected=Buffer.from(hex,'hex');return expected.length===key.length&&timingSafeEqual(expected,key);}
+function key(){const k=process.env.TOKEN_ENCRYPTION_KEY;if(!/^[a-f0-9]{64}$/i.test(k||''))throw new Error('Configure TOKEN_ENCRYPTION_KEY with 64 hexadecimal characters before connecting Meta.');return Buffer.from(k,'hex');}
+export function encrypt(data){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key(),iv);const bytes=Buffer.concat([cipher.update(JSON.stringify(data),'utf8'),cipher.final()]);return [iv,cipher.getAuthTag(),bytes].map(x=>x.toString('base64url')).join('.');}
+export function decrypt(data){const [iv,tag,bytes]=data.split('.').map(x=>Buffer.from(x,'base64url'));const decipher=createDecipheriv('aes-256-gcm',key(),iv);decipher.setAuthTag(tag);return JSON.parse(Buffer.concat([decipher.update(bytes),decipher.final()]).toString('utf8'));}
